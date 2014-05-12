@@ -37,6 +37,7 @@ The source for all these files is located at:
 
 import re
 import os
+import csv
 import gzip
 import argparse
 
@@ -69,51 +70,43 @@ def SearchForBindingSite(filePath, regex):
     
     if res is None:
 	print("%s not found in %s." % (res.pattern, filePath))
-
-    data = res.string[:res.string.find(">", res.end())].split(">")[-1]
-    """>FBtr0089105 type=three_prime_untranslated_region; \
-	    loc=4:complement(588922..588992); name=CG1970-RA; \
-	    MD5=9890392c617f7db0c6b335e5fcb3bd1f; length=71; \
-	    parent=FBgn0039909; release=r5.56; species=Dmel;
-    TTGTTTTTAGAGAATGTGTGTCTTCTCTGTACGAAACTGCTTAAATATAT
-    AAATATAAATACGTTCAAAAT
-
-Given a set regex (i.e. (?x)(TG){4,} ) or a text file with a list of regex's:
-    1) Search those 4 files for the regex
-    2) When it finds a match output the following to a text file:
-    [part of gene (e.g. exon/intron/etc.)] [pattern matched] \
-	    [gene that it matches] [length of sequence matched]
-
-The "gene that it matches" can be snagged from parent=FBgn0039909 as seen above.
-    """
-    dataDict = dict([d.strip().split("=") for d in data.split(";"[1:-1]])
-
+	return None
+    
+    for groupNo in xrange(len(res.groups())):
+	# XXX Code needs to be altered for groupNo?
+	data = res.string[:res.string.find(">", res.end())].split(">")[-1]
+	dataDict = dict([d.strip().split("=") for d in data.split(";")[1:-1]])
+	match.append([res.group(groupNo), dataDict['parent'],
+	    dataDict['length']])
+    
     return match
 
 def FindBindingSites(args):
     """Find binding sites and write appropriate information to the output file.
     """
-    fileNames = []
-    baseName = "%(species)s-%(chromosome)s-%(gene)s-%(version)s.fasta.gz"
-    
     myRegExs = GetRegEx(args['regex'])
+    
     output = args['output']
     if output is None:
 	output = "%(species)s-bs_finder_results.csv" % args
     
     for gene in args['genes']:
 	args['gene'] = gene
-	p = os.path.join(args['path'], baseName % args)
+	p = os.path.join(args['path'],
+		"%(species)s-%(chromosome)s-%(gene)s-%(version)s.fasta.gz"
+		% args)
 	
 	if os.path.exists(p):
 	    for regex in myRegExs:
 		result = SearchForBindingSite(p, regex)
 		
 		if result:
-		    # Use csv
-		    with open(output, 'a') as f:
+		    with open(output, 'ab') as csvfile:
+			writer = csv.writer(csvfile, delimiter='\t',
+				quotechar='|', quoting=csv.QUOTE_MINIMAL)
 			for r in result:
-			    f.write(','.join(r))
+			    writer.writerow([gene] + r)
+	# XXX elif FTP:
 	else:
 	    print("Could not locate %s" % p)
 
